@@ -1,0 +1,17 @@
+{
+  "Location": {
+    "Name": "khanpur",
+    "Latitude":  40.51,
+    "Longitude": 33.976
+  },
+  "WeatherData": [
+    {
+      "name": "Temperature",
+      "value": 40.7
+    },
+    {
+      "name": "Wind Speed",
+      "value": 30.5
+    }
+  ]
+}
