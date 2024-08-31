@@ -1,0 +1,130 @@
+#include <iostream>
+#include <thread>
+#include <string>
+#include <fstream>
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <unistd.h>
+#include <dirent.h>
+
+using namespace std;
+
+class TcpServer {
+public:
+    TcpServer(int port) {
+        serverSocket = socket(AF_INET, SOCK_STREAM, 0);
+        if (serverSocket < 0) {
+            cerr << "Error creating socket" << endl;
+            exit(1);
+        }
+
+        serverAddress.sin_family = AF_INET;
+        serverAddress.sin_port = htons(port);
+        serverAddress.sin_addr.s_addr = INADDR_ANY;
+
+        if (bind(serverSocket, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) < 0) {
+            cerr << "Error binding socket" << endl;
+            exit(1);
+        }
+    }
+
+    void startListen() {
+        if (listen(serverSocket, 3) < 0) {
+            cerr << "Error listening for connections" << endl;
+            exit(1);
+        }
+
+        cout << "Server listening on port 8080..." << endl;
+
+        while (true) {
+            struct sockaddr_in clientAddress;
+            socklen_t clientAddressLength = sizeof(clientAddress);
+            int clientSocket = accept(serverSocket, (struct sockaddr*)&clientAddress, &clientAddressLength);
+
+            if (clientSocket < 0) {
+                cerr << "Error accepting connection" << endl;
+                continue;
+            }
+            thread t(handleRequestThread, clientSocket);
+            t.detach();
+        }
+    }
+
+private:
+    void handleRequestThread(int clientSocket) {
+
+        string request = readRequest(clientSocket);
+
+        string file = parseRequest(request);
+
+        sendResponse(clientSocket, file);
+
+        close(clientSocket);
+    }
+
+    string readRequest(int clientSocket) {
+        char buffer[1024];
+        string request;
+
+        while (true) {
+            int bytesRead = read(clientSocket, buffer, 1024);
+            if (bytesRead < 0) {
+                cerr << "Error reading from socket" << endl;
+                return "";
+            }
+
+            request += string(buffer, bytesRead);
+            if (request.find("\r\n\r\n") != string::npos) {
+                break;
+            }
+        }
+
+        return request;
+    }
+
+    string parseRequest(string request) {
+        size_t pos = request.find("GET ");
+        if (pos == string::npos) {
+            return "404.html";
+        }
+
+        pos += 4;
+        size_t endPos = request.find(" ", pos);
+        if (endPos == string::npos) {
+            return "404.html";
+        }
+
+        string file = request.substr(pos, endPos - pos);
+        if (file == "/") {
+            file = "/index.html";
+        }
+
+        return file;
+    }
+
+    void sendResponse(int clientSocket, string file) {
+        ifstream fileStream("." + file);
+        if (!fileStream.is_open()) {
+            fileStream.open("404.html");
+            if (!fileStream.is_open()) {
+                cerr << "Error opening file" << endl;
+                return;
+            }
+        }
+
+        string fileContent((istreambuf_iterator<char>(fileStream)), istreambuf_iterator<char>());
+
+        string response = "HTTP/1.1 200 OK\r\nContent-Type: text/html\r\nContent-Length: " + to_string(fileContent.length()) + "\r\n\r\n" + fileContent;
+
+        write(clientSocket, response.c_str(), response.length());
+    }
+
+    int serverSocket;
+    struct sockaddr_in serverAddress;
+};
+
+int main() {
+    TcpServer server(8080);
+    server.startListen();
+    return 0;
+}
